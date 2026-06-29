@@ -31,14 +31,13 @@ from .wevo_api import WevoApiClient, WevoApiError
 _LOGGER = logging.getLogger(__name__)
 
 # Date fields on a Wevo transaction, ordered by preference. The primary names
-# were verified against the Wevo Flutter app's transaction model (epoch values
-# in milliseconds); the rest are defensive fallbacks in case the API changes.
+# (epoch milliseconds) were verified against a live /rest/transactions response;
+# the rest are defensive fallbacks in case the API changes.
 _TX_DATE_KEYS = (
+    "plugInTime",
+    "plugOutTime",
     "startTimestampMsSinceEpoch",
-    "stopTimestampMsSinceEpoch",
     "startTimestamp",
-    "stopTimestamp",
-    "endTimestamp",
     "startTime",
     "endTime",
     "createdAt",
