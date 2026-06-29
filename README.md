@@ -10,6 +10,7 @@ Custom Home Assistant integration for Wevo Energy chargers.
 - Current charging state sensor
 - Current charging speed sensor (kW)
 - Session energy sensor (kWh)
+- Monthly energy sensor (kWh) – sum of all sessions in the current calendar month
 
 ## Project structure
 - `custom_components/wevo_energy/` – Home Assistant custom component
@@ -25,6 +26,7 @@ Custom Home Assistant integration for Wevo Energy chargers.
 - `sensor.wevo_charging_state`
 - `sensor.wevo_charging_speed`
 - `sensor.wevo_session_energy`
+- `sensor.wevo_monthly_energy`
 
 ## Notes
 - Cognito defaults are preconfigured based on observed Wevo app behavior:

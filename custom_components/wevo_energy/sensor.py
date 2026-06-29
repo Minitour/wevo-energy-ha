@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant
@@ -21,6 +25,7 @@ async def async_setup_entry(
             WevoStateSensor(coordinator, entry),
             WevoChargingRateSensor(coordinator, entry),
             WevoSessionEnergySensor(coordinator, entry),
+            WevoMonthlyEnergySensor(coordinator, entry),
         ],
         True,
     )
@@ -70,3 +75,24 @@ class WevoSessionEnergySensor(WevoBaseSensor):
     def native_value(self):
         value = self.coordinator.data.get("total_energy_kwh")
         return round(float(value), 3) if value is not None else None
+
+
+class WevoMonthlyEnergySensor(WevoBaseSensor):
+    _attr_name = "Wevo Monthly Energy"
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL
+
+    def __init__(self, coordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "monthly_energy_kwh")
+
+    @property
+    def native_value(self):
+        value = self.coordinator.data.get("monthly_energy_kwh")
+        return round(float(value), 3) if value is not None else None
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "session_count": self.coordinator.data.get("monthly_session_count"),
+        }
