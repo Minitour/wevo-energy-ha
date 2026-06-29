@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -28,110 +28,33 @@ from .const import (
 )
 from .wevo_api import WevoApiClient, WevoApiError
 
-_LOGGER = logging.getLogger(__name__)
 
-# Date fields on a Wevo transaction, ordered by preference. The primary names
-# (epoch milliseconds) were verified against a live /rest/transactions response;
-# the rest are defensive fallbacks in case the API changes.
-_TX_DATE_KEYS = (
-    "plugInTime",
-    "plugOutTime",
-    "startTimestampMsSinceEpoch",
-    "startTimestamp",
-    "startTime",
-    "endTime",
-    "createdAt",
-    "transactionDate",
-    "date",
-)
+def _monthly_energy_kwh(transactions: list[dict[str, Any]]) -> tuple[float, int]:
+    """Sum totalEnergyKwh for transactions that started in the current local month.
 
-
-def _parse_tx_datetime(tx: dict[str, Any]) -> datetime | None:
-    """Best-effort extraction of a transaction's start datetime.
-
-    Handles both ISO 8601 strings and epoch timestamps (seconds or milliseconds).
-    Returns a timezone-aware datetime in HA's configured timezone, or None.
-    """
-    for key in _TX_DATE_KEYS:
-        if key not in tx:
-            continue
-        value = tx[key]
-        if value in (None, ""):
-            continue
-
-        parsed: datetime | None = None
-
-        # Numeric epoch (int/float or numeric string).
-        epoch = _coerce_epoch(value)
-        if epoch is not None:
-            parsed = dt_util.utc_from_timestamp(epoch)
-        elif isinstance(value, str):
-            parsed = dt_util.parse_datetime(value)
-
-        if parsed is None:
-            continue
-
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=dt_util.UTC)
-        return dt_util.as_local(parsed)
-
-    return None
-
-
-def _coerce_epoch(value: Any) -> float | None:
-    """Return an epoch in seconds if value looks like a numeric timestamp."""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        number = float(value)
-    elif isinstance(value, str):
-        stripped = value.strip()
-        # Avoid treating ISO date strings (which contain '-' or 'T') as epochs.
-        if not stripped or any(c in stripped for c in ("-", "T", ":", "/")):
-            return None
-        try:
-            number = float(stripped)
-        except ValueError:
-            return None
-    else:
-        return None
-
-    if number <= 0:
-        return None
-    # Heuristic: values in millisecond range get scaled down to seconds.
-    if number >= 1e12:
-        number /= 1000.0
-    return number
-
-
-def _monthly_energy_kwh(transactions: list[dict[str, Any]]) -> tuple[float, int, int]:
-    """Sum totalEnergyKwh for transactions that fall in the current local month.
-
-    Returns (total_kwh, matched_session_count, undated_session_count).
+    The session start (``plugInTime``) is epoch milliseconds. Returns
+    (total_kwh, session_count).
     """
     now = dt_util.now()
     total = 0.0
-    matched = 0
-    undated = 0
+    count = 0
 
     for tx in transactions:
-        when = _parse_tx_datetime(tx)
-        if when is None:
-            undated += 1
+        plug_in = tx.get("plugInTime")
+        if not isinstance(plug_in, (int, float)):
             continue
+
+        when = dt_util.as_local(dt_util.utc_from_timestamp(plug_in / 1000))
         if when.year != now.year or when.month != now.month:
             continue
 
-        energy = tx.get("totalEnergyKwh")
-        if energy is None:
-            continue
         try:
-            total += float(energy)
+            total += float(tx.get("totalEnergyKwh") or 0)
         except (TypeError, ValueError):
             continue
-        matched += 1
+        count += 1
 
-    return total, matched, undated
+    return total, count
 
 
 class WevoCoordinator(DataUpdateCoordinator[dict]):
@@ -209,13 +132,7 @@ class WevoCoordinator(DataUpdateCoordinator[dict]):
                 if energy_kwh in (None, 0, 0.0):
                     energy_kwh = latest.get("totalEnergyKwh")
 
-            monthly_kwh, monthly_sessions, undated = _monthly_energy_kwh(transactions)
-            if undated and not monthly_sessions:
-                _LOGGER.debug(
-                    "Could not determine a date for %s transaction(s); "
-                    "monthly energy may be incomplete",
-                    undated,
-                )
+            monthly_kwh, monthly_sessions = _monthly_energy_kwh(transactions)
 
             data["rate_kw"] = rate_kw
             data["total_energy_kwh"] = energy_kwh
