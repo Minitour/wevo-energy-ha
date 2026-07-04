@@ -57,6 +57,17 @@ def _monthly_energy_kwh(transactions: list[dict[str, Any]]) -> tuple[float, int]
     return total, count
 
 
+def _total_energy_kwh(transactions: list[dict[str, Any]]) -> float:
+    """Sum totalEnergyKwh across all transactions (lifetime accumulated energy)."""
+    total = 0.0
+    for tx in transactions:
+        try:
+            total += float(tx.get("totalEnergyKwh") or 0)
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
 class WevoCoordinator(DataUpdateCoordinator[dict]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
@@ -133,11 +144,14 @@ class WevoCoordinator(DataUpdateCoordinator[dict]):
                     energy_kwh = latest.get("totalEnergyKwh")
 
             monthly_kwh, monthly_sessions = _monthly_energy_kwh(transactions)
+            lifetime_kwh = _total_energy_kwh(transactions)
 
             data["rate_kw"] = rate_kw
             data["total_energy_kwh"] = energy_kwh
             data["monthly_energy_kwh"] = monthly_kwh
             data["monthly_session_count"] = monthly_sessions
+            data["lifetime_energy_kwh"] = lifetime_kwh
+            data["lifetime_session_count"] = len(transactions)
             return data
         except WevoApiError as err:
             raise UpdateFailed(str(err)) from err
